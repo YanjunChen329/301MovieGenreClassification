@@ -108,15 +108,16 @@ def wrong_prediction_probability(prediction, truth):
     probability[1] = wrong[0] / (1.0 * total[1])
     probability[2] = wrong[0] / (1.0 * total[2])
     probability[3] = wrong[0] / (1.0 * total[3])
-    return probability
+    accuracy = (prediction == truth).sum() / float(prediction.shape[0])
+    return probability, accuracy
 
 
 def ensemble_validate(rf):
     rf_result = rf.predict(valid_data)
     nn_result = np.loadtxt("temp.txt")
     print(rf_result.shape, nn_result.shape)
-    rf_p = wrong_prediction_probability(rf_result, valid_label)
-    nn_p = wrong_prediction_probability(nn_result, valid_label)
+    rf_p, rf_a = wrong_prediction_probability(rf_result, valid_label)
+    nn_p, nn_a = wrong_prediction_probability(nn_result, valid_label)
     print(rf_p)
     print(nn_p)
     ensemble_prediction = np.zeros(rf_result.shape[0])
@@ -128,7 +129,7 @@ def ensemble_validate(rf):
         else:
             p_0true = 1 - rf_p[lst[0]]
             p_1true = 1 - nn_p[lst[1]]
-            prob = p_0true / (p_1true + p_0true)
+            prob = p_0true / (p_1true + p_0true) * (rf_a / nn_a)
             rand = np.random.rand()
             if rand < prob:
                 result = lst[0]
@@ -146,14 +147,16 @@ def ensemble_validate(rf):
     print(np.sum((ensemble_prediction == valid_label).astype(int)) / float(valid_label.shape[0]))
 
 
-def ensemble_test(rf, nn_result, fname):
+def ensemble_test(rf, nn_result, fname, rf_result=None):
     rf_valid = rf.predict(valid_data)
     nn_valid = np.loadtxt("temp.txt")
     print(rf_valid.shape, nn_valid.shape)
-    rf_p = wrong_prediction_probability(rf_valid, valid_label)
-    nn_p = wrong_prediction_probability(nn_valid, valid_label)
-
-    rf_result = rf.predict(test_data)
+    rf_p, rf_a = wrong_prediction_probability(rf_valid, valid_label)
+    nn_p, nn_a = wrong_prediction_probability(nn_valid, valid_label)
+    rf_a += 0.25
+    
+    if rf_result is None:
+        rf_result = rf.predict(test_data)
     ensemble_prediction = np.zeros(rf_result.shape[0])
 
     for i, lst in enumerate(zip(rf_result, nn_result)):
@@ -162,7 +165,7 @@ def ensemble_test(rf, nn_result, fname):
         else:
             p_0true = 1 - rf_p[lst[0]]
             p_1true = 1 - nn_p[lst[1]]
-            prob = (p_0true-0.1) / (p_1true + p_0true)
+            prob = p_0true / (p_1true + p_0true) * (1.0 + rf_a - nn_a)
             rand = np.random.rand()
             if rand < prob:
                 result = lst[0]
@@ -193,8 +196,9 @@ if __name__ == '__main__':
     # validate(model, 25)
 
     rf = joblib.load("normal_rf.pkl")
+    rf_result = pd.read_csv("bowen.csv").values[:, 1].ravel()
     # nn_result = validate(nn)
-    # nn_result = pd.read_csv("prediction2.csv").values[:, 1].ravel()
+    nn_result = pd.read_csv("prediction2.csv").values[:, 1].ravel()
     # np.savetxt("temp.txt", nn_result)
-    ensemble_validate(rf)
-    # ensemble_test(rf, nn_result, "prediction4.csv")
+    # ensemble_validate(rf)
+    ensemble_test(rf, nn_result, "prediction6.csv", rf_result=rf_result)
